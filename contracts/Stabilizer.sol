@@ -21,6 +21,14 @@ contract Stabilizer is Ownable, ReentrancyGuard {
     IApeToken public immutable apeApeUSD;
     IERC20 public immutable apeUSD;
 
+    event Swap(
+        address tokenIn,
+        uint256 amountIn,
+        address tokenOut,
+        uint256 amountOut
+    );
+    event Seize(address token, uint256 amount);
+
     constructor(address _apeApeUSD) {
         apeApeUSD = IApeToken(_apeApeUSD);
         apeUSD = IERC20(apeApeUSD.underlying());
@@ -46,7 +54,7 @@ contract Stabilizer is Ownable, ReentrancyGuard {
         uint256 amount,
         int128 outputCoinIndex,
         uint256 minOutput
-    ) external onlyOwner {
+    ) external onlyOwner nonReentrant {
         require(
             outputCoinIndex == 1 || outputCoinIndex == 2,
             "unsupported coin"
@@ -63,14 +71,24 @@ contract Stabilizer is Ownable, ReentrancyGuard {
         // Approve and swap.
         uint256 bal = apeUSD.balanceOf(address(this));
         apeUSD.safeIncreaseAllowance(address(apeUSDCurvePool), bal);
-        apeUSDCurvePool.exchange_underlying(0, outputCoinIndex, bal, minOutput);
+        uint256 amountOutput = apeUSDCurvePool.exchange_underlying(
+            0,
+            outputCoinIndex,
+            bal,
+            minOutput
+        );
+        if (outputCoinIndex == 1) {
+            emit Swap(address(apeUSD), bal, address(FRAX), amountOutput);
+        } else if (outputCoinIndex == 2) {
+            emit Swap(address(apeUSD), bal, address(USDC), amountOutput);
+        }
     }
 
     function swapStableForApeUSD(
         uint256 amount,
         int128 inputCoinIndex,
         uint256 minOutput
-    ) external onlyOwner {
+    ) external onlyOwner nonReentrant {
         require(inputCoinIndex == 1 || inputCoinIndex == 2, "unsupported coin");
 
         if (amount != 0) {
@@ -81,12 +99,17 @@ contract Stabilizer is Ownable, ReentrancyGuard {
                 USDC.safeIncreaseAllowance(address(apeUSDCurvePool), amount);
             }
 
-            apeUSDCurvePool.exchange_underlying(
+            uint256 amountOutput = apeUSDCurvePool.exchange_underlying(
                 inputCoinIndex,
                 0,
                 amount,
                 minOutput
             );
+            if (inputCoinIndex == 1) {
+                emit Swap(address(FRAX), amount, address(apeUSD), amountOutput);
+            } else if (inputCoinIndex == 2) {
+                emit Swap(address(USDC), amount, address(apeUSD), amountOutput);
+            }
         }
 
         // Approve and repay.
@@ -114,5 +137,6 @@ contract Stabilizer is Ownable, ReentrancyGuard {
             require(borrowBalance == 0, "borrow balance not zero");
         }
         IERC20(token).safeTransfer(owner(), amount);
+        emit Seize(token, amount);
     }
 }
