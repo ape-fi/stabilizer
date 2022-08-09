@@ -2,7 +2,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  await deploy("Stabilizer", {
+  await deploy("StabilizerV2", {
     from: deployer,
     args: ["0xc7319dBc86A121313Bc48B7C54d0672756465031"],
     log: true,
