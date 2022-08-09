@@ -5,7 +5,7 @@ const comptrollerAbi = require('../abi/comptroller');
 const erc20Abi = require('../abi/erc20');
 const apeTokenAbi = require('../abi/apeToken');
 
-describe("Stabilizer", () => {
+describe.skip("Stabilizer", () => {
   const toWei = ethers.utils.parseEther;
   const comptrollerAddress = '0xDE607fe5Cb415d83Fe4A976afD97e5DaEeaedB07';
   const apeAdminAddress = '0x02cA76E87779412a77Ee77C3600D72F68b9ea68C';

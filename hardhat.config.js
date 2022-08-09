@@ -39,4 +39,7 @@ module.exports = {
         ? ""
         : process.env.ETHERSCAN_API_KEY,
   },
+  mocha: {
+    timeout: 100000000
+  },
 };
