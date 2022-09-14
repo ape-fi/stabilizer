@@ -42,4 +42,6 @@ interface ICurveStableSwap {
         external
         view
         returns (uint256);
+
+    function get_virtual_price() external view returns (uint256);
 }
