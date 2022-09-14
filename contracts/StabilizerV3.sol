@@ -23,6 +23,11 @@ contract StabilizerV3 is Ownable, ReentrancyGuard {
     IApeToken public immutable apeApeUSD;
     IERC20 public immutable apeUSD;
 
+    struct RewardData {
+        address token;
+        uint256 amount;
+    }
+
     event Seize(address token, uint256 amount);
 
     constructor(address _apeApeUSD) {
@@ -62,16 +67,31 @@ contract StabilizerV3 is Ownable, ReentrancyGuard {
         return (amount * price) / 1e18;
     }
 
-    function getClaimableCRVAndCVX()
-        external
-        view
-        returns (IConvexStakingWrapperFrax.EarnedData[] memory)
-    {
-        return apeUSDConvexStakingWrapperFrax.earned(address(this));
-    }
+    function getClaimableRewards() external view returns (RewardData[] memory) {
+        IConvexStakingWrapperFrax.EarnedData[]
+            memory convexRewards = apeUSDConvexStakingWrapperFrax.earned(
+                address(this)
+            );
+        uint256[] memory fraxRewards = apeUSDFraxStaking.earned(address(this));
+        address[] memory fraxRewardTokens = apeUSDFraxStaking
+            .getAllRewardTokens();
 
-    function getClaimableFXS() external view returns (uint256) {
-        return apeUSDFraxStaking.earned(address(this))[0];
+        RewardData[] memory claimableRewards = new RewardData[](
+            convexRewards.length + fraxRewards.length
+        );
+        for (uint256 i = 0; i < convexRewards.length; i++) {
+            claimableRewards[i] = RewardData({
+                token: convexRewards[i].token,
+                amount: convexRewards[i].amount
+            });
+        }
+        for (uint256 i = 0; i < fraxRewards.length; i++) {
+            claimableRewards[i + convexRewards.length] = RewardData({
+                token: fraxRewardTokens[i],
+                amount: fraxRewards[i]
+            });
+        }
+        return claimableRewards;
     }
 
     // --- DEPOSIT AND STAKE ---
@@ -211,14 +231,15 @@ contract StabilizerV3 is Ownable, ReentrancyGuard {
 
     // --- SEIZE ---
 
-    function seize(address token, uint256 amount) external onlyOwner {
+    function seize(address token) external onlyOwner {
         if (token == address(apeUSD)) {
             uint256 borrowBalance = apeApeUSD.borrowBalanceCurrent(
                 address(this)
             );
             require(borrowBalance == 0, "borrow balance not zero");
         }
-        IERC20(token).safeTransfer(owner(), amount);
-        emit Seize(token, amount);
+        uint256 bal = IERC20(token).balanceOf(address(this));
+        IERC20(token).safeTransfer(owner(), bal);
+        emit Seize(token, bal);
     }
 }

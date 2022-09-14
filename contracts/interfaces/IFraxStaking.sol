@@ -19,6 +19,8 @@ interface IFraxStaking {
 
     function lockedLiquidityOf(address account) external view returns (uint256);
 
+    function getAllRewardTokens() external view returns (address[] memory);
+
     function earned(address account) external view returns (uint256[] memory);
 
     function stakeLocked(uint256 liquidity, uint256 secs)

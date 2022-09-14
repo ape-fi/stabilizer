@@ -212,7 +212,7 @@ describe("StabilizerV3", () => {
       console.log('Remaining apeUSD balance', apeUSDBalance.toString());
 
       // No borrow balance, can seize apeUSD.
-      await stabilizer.connect(admin).seize(apeUSDAddress, apeUSDBalance);
+      await stabilizer.connect(admin).seize(apeUSDAddress);
       expect(await apeUSD.balanceOf(adminAddress)).to.eq(apeUSDBalance);
       expect(await apeUSD.balanceOf(stabilizer.address)).to.eq(0);
     });
@@ -238,10 +238,7 @@ describe("StabilizerV3", () => {
       expect(cvxBalance1).to.eq(0);
       expect(fxsBalance1).to.eq(0);
 
-      const claimableCRVAndCVX = await stabilizer.getClaimableCRVAndCVX();
-      const estimateCRVReceived = claimableCRVAndCVX[0].amount;
-      const estimateCVXReceived = claimableCRVAndCVX[1].amount;
-      const estimateFXSReceived = await stabilizer.getClaimableFXS();
+      const claimable = await stabilizer.getClaimableRewards();
 
       // Claim rewards
       await stabilizer.connect(admin).claimRewards();
@@ -259,11 +256,11 @@ describe("StabilizerV3", () => {
       expect(cvxBalance2).to.gt(0);
       expect(fxsBalance2).to.gt(0);
 
-      console.log('CRV estimated', estimateCRVReceived.toString());
+      console.log('CRV estimated', claimable[0].amount.toString());
       console.log('CRV balance  ', crvBalance2.toString());
-      console.log('CVX estimated', estimateCVXReceived.toString());
+      console.log('CVX estimated', claimable[1].amount.toString());
       console.log('CVX balance  ', cvxBalance2.toString());
-      console.log('FXS estimated', estimateFXSReceived.toString());
+      console.log('FXS estimated', claimable[2].amount.toString());
       console.log('FXS balance  ', fxsBalance2.toString());
     });
   });
@@ -274,7 +271,7 @@ describe("StabilizerV3", () => {
       await expect(stabilizer.connect(user).depositAndIncreaseLockAmount(0, 0, '0x0000000000000000000000000000000000000000000000000000000000000000')).to.be.revertedWith('Ownable: caller is not the owner');
       await expect(stabilizer.connect(user).extendLock('0x0000000000000000000000000000000000000000000000000000000000000000', 0)).to.be.revertedWith('Ownable: caller is not the owner');
       await expect(stabilizer.connect(user).unstakeAndWithdraw('0x0000000000000000000000000000000000000000000000000000000000000000', 0)).to.be.revertedWith('Ownable: caller is not the owner');
-      await expect(stabilizer.connect(user).seize(apeUSDAddress, 0)).to.be.revertedWith('Ownable: caller is not the owner');
+      await expect(stabilizer.connect(user).seize(apeUSDAddress)).to.be.revertedWith('Ownable: caller is not the owner');
       await expect(stabilizer.connect(user).claimRewards()).to.be.revertedWith('Ownable: caller is not the owner');
     });
   });
