@@ -94,57 +94,14 @@ contract StabilizerV3 is Ownable, ReentrancyGuard {
         return claimableRewards;
     }
 
-    // --- DEPOSIT AND STAKE ---
+    // --- DEPOSIT ---
 
-    function depositAndStakeLock(
-        uint256 amount,
-        uint256 minCurveLP,
-        uint256 period
-    ) external onlyOwner nonReentrant {
-        depositApeUSD(amount, minCurveLP);
-
-        // Approve Convex staking wrapped LP, and stake LP to Frax staking.
-        uint256 stakedBalance = apeUSDConvexStakingWrapperFrax.balanceOf(
-            address(this)
-        );
-        if (stakedBalance > 0) {
-            apeUSDConvexStakingWrapperFrax.approve(
-                address(apeUSDFraxStaking),
-                stakedBalance
-            );
-            apeUSDFraxStaking.stakeLocked(stakedBalance, period);
-        }
-    }
-
-    function depositAndIncreaseLockAmount(
-        uint256 amount,
-        uint256 minCurveLP,
-        bytes32 kekID
-    ) external onlyOwner nonReentrant {
-        depositApeUSD(amount, minCurveLP);
-
-        // Approve Convex staking wrapped LP, and stake LP to Frax staking.
-        uint256 stakedBalance = apeUSDConvexStakingWrapperFrax.balanceOf(
-            address(this)
-        );
-        if (stakedBalance > 0) {
-            apeUSDConvexStakingWrapperFrax.approve(
-                address(apeUSDFraxStaking),
-                stakedBalance
-            );
-            apeUSDFraxStaking.lockAdditional(kekID, stakedBalance);
-        }
-    }
-
-    function extendLock(bytes32 kekID, uint256 newEndingTime)
-        external
+    function depositApeUSD(uint256 amount, uint256 minCurveLP)
+        public
         onlyOwner
         nonReentrant
+        returns (uint256)
     {
-        apeUSDFraxStaking.lockLonger(kekID, newEndingTime);
-    }
-
-    function depositApeUSD(uint256 amount, uint256 minCurveLP) internal {
         if (amount > 0) {
             // Borrow apeUSD.
             require(
@@ -176,23 +133,70 @@ contract StabilizerV3 is Ownable, ReentrancyGuard {
             );
             apeUSDConvexStakingWrapperFrax.deposit(lpBalance, address(this));
         }
+        return lpBalance;
+    }
+
+    // --- STAKE ---
+
+    function stakeLock(uint256 lpAmount, uint256 period)
+        public
+        onlyOwner
+        nonReentrant
+    {
+        uint256 stakedBalance = apeUSDConvexStakingWrapperFrax.balanceOf(
+            address(this)
+        );
+        require(lpAmount <= stakedBalance, "insufficient LP");
+
+        // Approve Convex staking wrapped LP, and stake LP to Frax staking.
+        apeUSDConvexStakingWrapperFrax.approve(
+            address(apeUSDFraxStaking),
+            lpAmount
+        );
+        apeUSDFraxStaking.stakeLocked(lpAmount, period);
+    }
+
+    function increaseLockAmount(uint256 lpAmount, bytes32 kekID)
+        public
+        onlyOwner
+        nonReentrant
+    {
+        uint256 stakedBalance = apeUSDConvexStakingWrapperFrax.balanceOf(
+            address(this)
+        );
+        require(lpAmount <= stakedBalance, "insufficient LP");
+
+        // Approve Convex staking wrapped LP, and stake LP to Frax staking.
+        apeUSDConvexStakingWrapperFrax.approve(
+            address(apeUSDFraxStaking),
+            lpAmount
+        );
+        apeUSDFraxStaking.lockAdditional(kekID, lpAmount);
+    }
+
+    function extendLock(bytes32 kekID, uint256 newEndingTime)
+        public
+        onlyOwner
+        nonReentrant
+    {
+        apeUSDFraxStaking.lockLonger(kekID, newEndingTime);
     }
 
     // --- WITHDRAW ---
 
-    function unstakeAndWithdraw(bytes32 kekID, uint256 minApeUSD)
-        external
+    function withdrawApeUSD(uint256 lpAmount, uint256 minApeUSD)
+        public
         onlyOwner
         nonReentrant
     {
-        apeUSDFraxStaking.withdrawLocked(kekID, address(this));
-
-        // Withdraw from Convex staking wrapper (for Frax) and unwrap it back to Curve LP.
         uint256 stakedBalance = apeUSDConvexStakingWrapperFrax.balanceOf(
             address(this)
         );
-        if (stakedBalance > 0) {
-            apeUSDConvexStakingWrapperFrax.withdrawAndUnwrap(stakedBalance);
+        require(lpAmount <= stakedBalance, "insufficient LP");
+
+        if (lpAmount > 0) {
+            // Withdraw from Convex staking wrapper (for Frax) and unwrap it back to Curve LP.
+            apeUSDConvexStakingWrapperFrax.withdrawAndUnwrap(lpAmount);
         }
 
         // Remove liquidity from Curve pool.
@@ -219,9 +223,15 @@ contract StabilizerV3 is Ownable, ReentrancyGuard {
         );
     }
 
+    // --- UNSTAKE ---
+
+    function unstake(bytes32 kekID) public onlyOwner nonReentrant {
+        apeUSDFraxStaking.withdrawLocked(kekID, address(this));
+    }
+
     // --- CLAIM REWARDS ---
 
-    function claimRewards() external onlyOwner {
+    function claimRewards() public onlyOwner nonReentrant {
         // Claim CRV and CVX.
         apeUSDConvexStakingWrapperFrax.getReward(address(this));
 
@@ -231,8 +241,11 @@ contract StabilizerV3 is Ownable, ReentrancyGuard {
 
     // --- SEIZE ---
 
-    function seize(address token) external onlyOwner {
-        if (token == address(apeUSD)) {
+    function seize(address token) public onlyOwner nonReentrant {
+        if (
+            token == address(apeUSD) ||
+            token == address(apeUSDConvexStakingWrapperFrax)
+        ) {
             uint256 borrowBalance = apeApeUSD.borrowBalanceCurrent(
                 address(this)
             );

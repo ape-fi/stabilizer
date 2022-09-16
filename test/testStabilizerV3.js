@@ -71,10 +71,10 @@ describe("StabilizerV3", () => {
     apeUSDStakedConvexWrapperFrax = new ethers.Contract(apeUSDStakedConvexWrapperForFraxAddress, erc20Abi, waffle.provider);
   });
 
-  describe('depositAndStakeLock', async () => {
+  describe('depositApeUSD / stakeLock / increaseLockAmount / extendLock', async () => {
     const apeUSDBorrowAmount = toWei('10000');
 
-    it('depositAndStakeLock', async () => {
+    it('depositApeUSD and stakeLock', async () => {
       const [
         apeUSDBalanceInCurvePoolBefore,
         convexVoterBalanceInCurveGaugeBefore,
@@ -88,7 +88,9 @@ describe("StabilizerV3", () => {
       const estimatedAmount = await stabilizer.getAmountCurveLP(apeUSDBorrowAmount);
       console.log('Estimated Curve LP received amount', estimatedAmount.toString());
 
-      await stabilizer.connect(admin).depositAndStakeLock(apeUSDBorrowAmount, 0, period);
+      await stabilizer.connect(admin).depositApeUSD(apeUSDBorrowAmount, 0);
+      const bal1 = await apeUSDStakedConvexWrapperFrax.balanceOf(stabilizer.address);
+      await stabilizer.connect(admin).stakeLock(bal1, period);
 
       // Check borrow balance.
       expect(await apeApeUSD.borrowBalanceStored(stabilizer.address)).to.eq(apeUSDBorrowAmount);
@@ -129,7 +131,9 @@ describe("StabilizerV3", () => {
       console.log('Total Curve LP locked value', totalLPLockedValue.toString());
 
       // Deposit second time.
-      await stabilizer.connect(admin).depositAndStakeLock(apeUSDBorrowAmount, 0, period);
+      await stabilizer.connect(admin).depositApeUSD(apeUSDBorrowAmount, 0);
+      const bal2 = await apeUSDStakedConvexWrapperFrax.balanceOf(stabilizer.address);
+      await stabilizer.connect(admin).stakeLock(bal2, period);
 
       const locks = await stabilizer.getAllLocks();
       expect(locks.length).to.eq(2);
@@ -142,9 +146,11 @@ describe("StabilizerV3", () => {
       expect(total).to.eq(totalLPLocked);
     });
 
-    it('depositAndIncreaseLockAmount / extendLock', async () => {
+    it('depositApeUSD, increaseLockAmount, and extendLock', async () => {
       // Deposit and lock first.
-      await stabilizer.connect(admin).depositAndStakeLock(apeUSDBorrowAmount, 0, period);
+      await stabilizer.connect(admin).depositApeUSD(apeUSDBorrowAmount, 0);
+      const bal1 = await apeUSDStakedConvexWrapperFrax.balanceOf(stabilizer.address);
+      await stabilizer.connect(admin).stakeLock(bal1, period);
 
       let locks = await stabilizer.getAllLocks();
       expect(locks.length).to.eq(1);
@@ -153,8 +159,10 @@ describe("StabilizerV3", () => {
       expect(totalLPLockedBefore).to.eq(locks[0].liquidity);
 
       // Increase the lock amount.
+      await stabilizer.connect(admin).depositApeUSD(apeUSDBorrowAmount, 0);
+      const bal2 = await apeUSDStakedConvexWrapperFrax.balanceOf(stabilizer.address);
       const kekID = locks[0].kek_id;
-      await stabilizer.connect(admin).depositAndIncreaseLockAmount(apeUSDBorrowAmount, 0, kekID);
+      await stabilizer.connect(admin).increaseLockAmount(bal2, kekID);
 
       locks = await stabilizer.getAllLocks();
       expect(locks.length).to.eq(1);
@@ -177,13 +185,15 @@ describe("StabilizerV3", () => {
     });
   });
 
-  describe('unstakeAndWithdraw / seize / claimRewards', async () => {
+  describe('unstake / withdrawApeUSD / seize / claimRewards', async () => {
     const apeUSDBorrowAmount = toWei('10000');
     const userApeUSDBorrowAmount = toWei('10000');
 
-    it('depositAndStakeLock, unstakeAndWithdraw, and seize', async () => {
+    it('depositApeUSD, stakeLock, unstake, withdrawApeUSD, and seize', async () => {
       // Deposit and lock first.
-      await stabilizer.connect(admin).depositAndStakeLock(apeUSDBorrowAmount, 0, period);
+      await stabilizer.connect(admin).depositApeUSD(apeUSDBorrowAmount, 0);
+      const bal1 = await apeUSDStakedConvexWrapperFrax.balanceOf(stabilizer.address);
+      await stabilizer.connect(admin).stakeLock(bal1, period);
 
       // Increase time.
       await hre.network.provider.send("evm_increaseTime", [period]);
@@ -202,7 +212,9 @@ describe("StabilizerV3", () => {
 
       // Unstake and withdraw.
       const kekID = locks[0].kek_id;
-      await stabilizer.connect(admin).unstakeAndWithdraw(kekID, 0);
+      await stabilizer.connect(admin).unstake(kekID);
+      const bal2 = await apeUSDStakedConvexWrapperFrax.balanceOf(stabilizer.address);
+      await stabilizer.connect(admin).withdrawApeUSD(bal2, 0);
 
       // Check borrow balance.
       expect(await apeApeUSD.borrowBalanceStored(stabilizer.address)).to.eq(0);
@@ -217,9 +229,36 @@ describe("StabilizerV3", () => {
       expect(await apeUSD.balanceOf(stabilizer.address)).to.eq(0);
     });
 
-    it('depositAndStakeLock and claimRewards', async () => {
+    it('depositApeUSD, stakeLock, unstake, and partial withdrawApeUSD', async () => {
+      // Deposit and lock first.
+      await stabilizer.connect(admin).depositApeUSD(apeUSDBorrowAmount, 0);
+      const bal1 = await apeUSDStakedConvexWrapperFrax.balanceOf(stabilizer.address);
+      await stabilizer.connect(admin).stakeLock(bal1, period);
+
+      // Increase time.
+      await hre.network.provider.send("evm_increaseTime", [period]);
+      await hre.network.provider.send("evm_mine");
+
+      const locks = await stabilizer.getAllLocks();
+      expect(locks.length).to.eq(1);
+
+      // Unstake and withdraw.
+      const kekID = locks[0].kek_id;
+      await stabilizer.connect(admin).unstake(kekID);
+      await stabilizer.connect(admin).withdrawApeUSD(toWei("5000"), 0); // withdraw partial
+
+      // Check borrow balance.
+      expect(await apeApeUSD.borrowBalanceStored(stabilizer.address)).to.gt(0);
+
+      // Check apeUSD staked convex wrapper frax balance.
+      expect(await apeUSDStakedConvexWrapperFrax.balanceOf(stabilizer.address)).to.gt(0);
+    });
+
+    it('depositApeUSD, stakeLock, and claimRewards', async () => {
       // Deposit and stake.
-      await stabilizer.connect(admin).depositAndStakeLock(apeUSDBorrowAmount, 0, period);
+      await stabilizer.connect(admin).depositApeUSD(apeUSDBorrowAmount, 0);
+      const bal1 = await apeUSDStakedConvexWrapperFrax.balanceOf(stabilizer.address);
+      await stabilizer.connect(admin).stakeLock(bal1, period);
 
       // Increase time.
       await hre.network.provider.send("evm_increaseTime", [period]);
@@ -267,10 +306,12 @@ describe("StabilizerV3", () => {
 
   describe('negative case', async () => {
     it('fail for not admin', async () => {
-      await expect(stabilizer.connect(user).depositAndStakeLock(0, 0, period)).to.be.revertedWith('Ownable: caller is not the owner');
-      await expect(stabilizer.connect(user).depositAndIncreaseLockAmount(0, 0, '0x0000000000000000000000000000000000000000000000000000000000000000')).to.be.revertedWith('Ownable: caller is not the owner');
+      await expect(stabilizer.connect(user).depositApeUSD(0, 0)).to.be.revertedWith('Ownable: caller is not the owner');
+      await expect(stabilizer.connect(user).stakeLock(0, period)).to.be.revertedWith('Ownable: caller is not the owner');
+      await expect(stabilizer.connect(user).increaseLockAmount(0, '0x0000000000000000000000000000000000000000000000000000000000000000')).to.be.revertedWith('Ownable: caller is not the owner');
       await expect(stabilizer.connect(user).extendLock('0x0000000000000000000000000000000000000000000000000000000000000000', 0)).to.be.revertedWith('Ownable: caller is not the owner');
-      await expect(stabilizer.connect(user).unstakeAndWithdraw('0x0000000000000000000000000000000000000000000000000000000000000000', 0)).to.be.revertedWith('Ownable: caller is not the owner');
+      await expect(stabilizer.connect(user).withdrawApeUSD(0, 0)).to.be.revertedWith('Ownable: caller is not the owner');
+      await expect(stabilizer.connect(user).unstake('0x0000000000000000000000000000000000000000000000000000000000000000')).to.be.revertedWith('Ownable: caller is not the owner');
       await expect(stabilizer.connect(user).seize(apeUSDAddress)).to.be.revertedWith('Ownable: caller is not the owner');
       await expect(stabilizer.connect(user).claimRewards()).to.be.revertedWith('Ownable: caller is not the owner');
     });
