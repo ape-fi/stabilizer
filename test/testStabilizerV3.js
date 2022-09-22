@@ -254,6 +254,56 @@ describe("StabilizerV3", () => {
       expect(await apeUSDStakedConvexWrapperFrax.balanceOf(stabilizer.address)).to.gt(0);
     });
 
+    it('depositApeUSD and claimRewards', async () => {
+      // Deposit.
+      await stabilizer.connect(admin).depositApeUSD(apeUSDBorrowAmount, 0);
+
+      // Increase time.
+      await hre.network.provider.send("evm_increaseTime", [3600]); // 1 hour
+      await hre.network.provider.send("evm_mine");
+
+      // Claim rewards.
+      await stabilizer.claimRewards();
+
+      const [
+        crvBalance1,
+        cvxBalance1,
+        fxsBalance1
+      ] = await Promise.all([
+        crv.balanceOf(stabilizer.address),
+        cvx.balanceOf(stabilizer.address),
+        fxs.balanceOf(stabilizer.address)
+      ]);
+      console.log('CRV balance  ', crvBalance1.toString());
+      console.log('CVX balance  ', cvxBalance1.toString());
+      console.log('FXS balance  ', fxsBalance1.toString());
+
+      // Increase time.
+      await hre.network.provider.send("evm_increaseTime", [3600]); // 1 hour
+      await hre.network.provider.send("evm_mine");
+
+      // Claim rewards again.
+      await stabilizer.claimRewards();
+
+      const [
+        crvBalance2,
+        cvxBalance2,
+        fxsBalance2
+      ] = await Promise.all([
+        crv.balanceOf(stabilizer.address),
+        cvx.balanceOf(stabilizer.address),
+        fxs.balanceOf(stabilizer.address)
+      ]);
+      console.log('CRV balance  ', crvBalance2.toString());
+      console.log('CVX balance  ', cvxBalance2.toString());
+      console.log('FXS balance  ', fxsBalance2.toString());
+
+      expect(crvBalance2).to.gt(crvBalance1);
+      expect(cvxBalance2).to.gt(cvxBalance1);
+      expect(fxsBalance1).to.eq(0);
+      expect(fxsBalance2).to.eq(0);
+    });
+
     it('depositApeUSD, stakeLock, and claimRewards', async () => {
       // Deposit and stake.
       await stabilizer.connect(admin).depositApeUSD(apeUSDBorrowAmount, 0);
@@ -279,7 +329,7 @@ describe("StabilizerV3", () => {
 
       const claimable = await stabilizer.getClaimableRewards();
 
-      // Claim rewards
+      // Claim rewards.
       await stabilizer.connect(admin).claimRewards();
 
       const [
